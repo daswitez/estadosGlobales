@@ -63,6 +63,14 @@ namespace WinFormsApp2.Services
 
             AgregarLog("Simulación reiniciada.");
             AgregarLog("Estados iniciales: P1=5, P2=2, P3=8.");
+            AgregarLog("Escenario didáctico sugerido:");
+            AgregarLog("1) Iniciar snapshot en P1");
+            AgregarLog("2) Entregar siguiente (MARKER P1->P2)");
+            AgregarLog("3) Enviar mensaje P3->P2");
+            AgregarLog("4) Entregar siguiente (MARKER P1->P3)");
+            AgregarLog("5) Evento interno en P3");
+            AgregarLog("6) Entregar siguiente (M1 llega a P2 como en tránsito)");
+            AgregarLog("7) Entregar siguiente (MARKER P3->P2)");
         }
 
         public void Reiniciar()
@@ -84,7 +92,7 @@ namespace WinFormsApp2.Services
             p1.GuardarSnapshot();
 
             AgregarLog("P1 inició el snapshot.");
-            AgregarLog($"P1 guardó su estado local: {p1.EstadoGuardado}.");
+            AgregarLog($"P1 guardó su estado local capturado: {p1.EstadoGuardado}.");
 
             EncolarMarker("P1", "P2");
             EncolarMarker("P1", "P3");
@@ -97,6 +105,9 @@ namespace WinFormsApp2.Services
 
         public void EnviarMensajeNormalP3aP2()
         {
+            Proceso p3 = Procesos["P3"];
+            p3.EstadoLocalActual++;
+
             Mensaje mensaje = new Mensaje
             {
                 Id = $"M{_contadorMensajes++}",
@@ -107,7 +118,35 @@ namespace WinFormsApp2.Services
             };
 
             ColaMensajes.Enqueue(mensaje);
-            AgregarLog($"P3 encoló mensaje normal hacia P2: {mensaje.Id}.");
+
+            AgregarLog($"P3 envió {mensaje.Id} hacia P2.");
+            AgregarLog($"P3 cambió su estado actual al enviar: {p3.EstadoLocalActual}.");
+        }
+
+        public void EjecutarEventoInternoEnP3()
+        {
+            Proceso p3 = Procesos["P3"];
+            p3.EstadoLocalActual++;
+
+            if (p3.SnapshotGuardado)
+            {
+                AgregarLog($"P3 realizó un evento interno después de capturar.");
+                AgregarLog($"P3 ahora tiene Estado actual = {p3.EstadoLocalActual} y Estado capturado = {p3.EstadoGuardado}.");
+            }
+            else
+            {
+                AgregarLog($"P3 realizó un evento interno antes de capturar. Nuevo estado actual: {p3.EstadoLocalActual}.");
+            }
+        }
+
+        public Mensaje? ObtenerSiguienteMensajePendiente()
+        {
+            if (ColaMensajes.Count == 0)
+            {
+                return null;
+            }
+
+            return ColaMensajes.Peek();
         }
 
         public void EntregarSiguienteMensaje()
@@ -122,28 +161,19 @@ namespace WinFormsApp2.Services
             RecibirMensaje(mensaje);
         }
 
-        public void EjecutarEscenarioCompleto()
+        public void EjecutarEscenarioDidactico()
         {
-            AgregarLog("=== Inicio del escenario automático ===");
+            AgregarLog("=== Inicio del escenario automático didáctico ===");
 
             IniciarSnapshotEnP1();
+            EntregarSiguienteMensaje();   // MARKER P1->P2
+            EnviarMensajeNormalP3aP2();   // P3 sube de 8 a 9
+            EntregarSiguienteMensaje();   // MARKER P1->P3, P3 captura 9 y encola marker a P2
+            EjecutarEventoInternoEnP3();  // P3 sube a 10, snapshot queda 9
+            EntregarSiguienteMensaje();   // M1 llega a P2 y queda en tránsito
+            EntregarSiguienteMensaje();   // MARKER P3->P2 cierra canal
 
-            // 1) Llega marker de P1 a P2
-            EntregarSiguienteMensaje();
-
-            // 2) P3 manda un mensaje normal a P2
-            EnviarMensajeNormalP3aP2();
-
-            // 3) Llega ese mensaje normal a P2 antes del marker desde P3
-            EntregarSiguienteMensaje();
-
-            // 4) Llega marker de P1 a P3
-            EntregarSiguienteMensaje();
-
-            // 5) Llega marker de P3 a P2
-            EntregarSiguienteMensaje();
-
-            AgregarLog("=== Fin del escenario automático ===");
+            AgregarLog("=== Fin del escenario automático didáctico ===");
         }
 
         private void EncolarMarker(string origen, string destino)
@@ -197,7 +227,7 @@ namespace WinFormsApp2.Services
             if (!receptor.SnapshotGuardado)
             {
                 receptor.GuardarSnapshot();
-                AgregarLog($"{receptor.Nombre} guardó su estado local: {receptor.EstadoGuardado}.");
+                AgregarLog($"{receptor.Nombre} guardó su estado local capturado: {receptor.EstadoGuardado}.");
 
                 if (receptor.MarkerRecibidoPorCanal.ContainsKey(canal))
                 {
@@ -244,12 +274,20 @@ namespace WinFormsApp2.Services
 
             foreach (Proceso proceso in Procesos.Values.OrderBy(p => p.Nombre))
             {
-                string estado = proceso.EstadoGuardado.HasValue
+                string estadoActual = proceso.EstadoLocalActual.ToString();
+                string estadoCapturado = proceso.EstadoGuardado.HasValue
                     ? proceso.EstadoGuardado.Value.ToString()
                     : "No guardado";
 
+                string diferencia = "-";
+                if (proceso.EstadoGuardado.HasValue)
+                {
+                    int delta = proceso.EstadoLocalActual - proceso.EstadoGuardado.Value;
+                    diferencia = delta == 0 ? "0" : (delta > 0 ? $"+{delta}" : delta.ToString());
+                }
+
                 lineas.Add(
-                    $"{proceso.Nombre} | Estado guardado: {estado} | En tránsito: {proceso.ObtenerMensajesEnTransitoTexto()}"
+                    $"{proceso.Nombre} | Actual: {estadoActual} | Capturado: {estadoCapturado} | Δ: {diferencia} | En tránsito: {proceso.ObtenerMensajesEnTransitoTexto()}"
                 );
             }
 
