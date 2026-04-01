@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -16,6 +16,30 @@ namespace WinFormsApp2.UI
         private AnimatedMessage? _currentAnimation;
         private readonly HashSet<string> _highlightedTransitChannels = new();
 
+        private Button _btnVelocidad = new Button();
+        private Label _lblExplicacionPaso = new Label();
+        private float _animationSpeed = 0.04f;
+        private int _pasoEscenario = 0;
+
+        private readonly string[] _explicacionesPasos = new string[]
+        {
+            "Bienvenido al Tutorial Guiado. Haz clic en el botón para iniciar el snapshot desde P1.",
+            "PASO 1 completado: P1 guardó su estado (5) y envió Markers azules por sus canales de salida.\n" +
+            "➤ Regla 1: Al iniciar, un proceso guarda su estado y envía Markers. Haz clic para entregar el Marker a P2.",
+            "PASO 2 completado: El Marker llegó a P2. Como P2 no tenía foto, aplicó Regla 2: guardó su estado (2).\n" +
+            "➤ El canal P1→P2 ahora tiene 🔒. Haz clic para que P3 envíe un mensaje normal a P2.",
+            "PASO 3 completado: P3 envió datos normales (M1) a P2. P3 NO sabe del snapshot, sigue trabajando.\n" +
+            "➤ Este mensaje viajará por el canal P3→P2. Haz clic para entregar el Marker a P3.",
+            "PASO 4 completado: El Marker llegó a P3. P3 aplicó Regla 2: guardó su estado (9) y reenvió Marker a P2.\n" +
+            "➤ P3 ahora vigila (🔴) sus canales. Haz clic para ejecutar un evento interno en P3.",
+            "PASO 5 completado: P3 hizo un cálculo interno (estado subió a 10). ¡Pero su foto dice 9!\n" +
+            "➤ ACTUAL ≠ CAPTURADO demuestra que el sistema NO se detuvo. Haz clic para entregar M1 a P2.",
+            "PASO 6 completado: ¡CASO CLAVE! M1 llegó a P2, pero P2 ya guardó su foto y el canal P3→P2 NO tiene Marker aún.\n" +
+            "➤ Regla 3: M1 se registra como MENSAJE EN TRÁNSITO (línea roja). Haz clic para el último Marker.",
+            "PASO 7 FINAL: El Marker de P3 llegó a P2. Canal P3→P2 cerrado con 🔒.\n" +
+            "➤ P2 recibió Markers por TODOS sus canales. ¡SNAPSHOT COMPLETO! El estado global es consistente."
+        };
+
         public MainForm()
         {
             InitializeComponent();
@@ -23,6 +47,24 @@ namespace WinFormsApp2.UI
             _simulator = new SnapshotSimulator();
 
             ConfigurarNodos();
+
+            _btnVelocidad.Text = "Vel. Normal ►";
+            _btnVelocidad.Location = new Point(1075, 430);
+            _btnVelocidad.Size = new Size(85, 35);
+            _btnVelocidad.Click += btnVelocidad_Click;
+            this.Controls.Add(_btnVelocidad);
+
+            _lblExplicacionPaso.Location = new Point(20, 670);
+            _lblExplicacionPaso.Size = new Size(1140, 55);
+            _lblExplicacionPaso.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+            _lblExplicacionPaso.ForeColor = Color.MidnightBlue;
+            _lblExplicacionPaso.BackColor = Color.FromArgb(232, 245, 255);
+            _lblExplicacionPaso.Padding = new Padding(8, 4, 8, 4);
+            _lblExplicacionPaso.BorderStyle = BorderStyle.FixedSingle;
+            _lblExplicacionPaso.Text = _explicacionesPasos[0];
+            this.Controls.Add(_lblExplicacionPaso);
+
+            btnEscenario.Text = "▶ Tutorial: Iniciar Snapshot";
 
             animationTimer.Interval = 30;
             animationTimer.Tick += animationTimer_Tick;
@@ -66,23 +108,71 @@ namespace WinFormsApp2.UI
 
         private void btnEscenario_Click(object sender, EventArgs e)
         {
-            animationTimer.Stop();
-            _currentAnimation = null;
+            if (_currentAnimation != null) return;
 
-            _simulator.EjecutarEscenarioDidactico();
+            switch (_pasoEscenario)
+            {
+                case 0:
+                    _simulator.IniciarSnapshotEnP1();
+                    btnEscenario.Text = "▶ Paso 2: Entregar Marker a P2";
+                    break;
+                case 1:
+                    IniciarAnimacionSiguienteMensaje();
+                    btnEscenario.Text = "▶ Paso 3: P3 envía datos a P2";
+                    break;
+                case 2:
+                    _simulator.EnviarMensajeNormalP3aP2();
+                    btnEscenario.Text = "▶ Paso 4: Entregar Marker a P3";
+                    break;
+                case 3:
+                    IniciarAnimacionSiguienteMensaje();
+                    btnEscenario.Text = "▶ Paso 5: Evento interno en P3";
+                    break;
+                case 4:
+                    _simulator.EjecutarEventoInternoEnP3();
+                    btnEscenario.Text = "▶ Paso 6: Entregar M1 a P2";
+                    break;
+                case 5:
+                    IniciarAnimacionSiguienteMensaje();
+                    btnEscenario.Text = "▶ Paso 7 (Final): Marker a P2";
+                    break;
+                case 6:
+                    IniciarAnimacionSiguienteMensaje();
+                    btnEscenario.Text = "✔ Tutorial Completado";
+                    break;
+                default:
+                    return;
+            }
+
+            if (_pasoEscenario < 7) _pasoEscenario++;
+
+            // Actualizar la explicación del paso
+            if (_pasoEscenario < _explicacionesPasos.Length)
+            {
+                _lblExplicacionPaso.Text = _explicacionesPasos[_pasoEscenario];
+            }
+
             ActualizarCanalesResaltados();
             ActualizarUI();
+        }
 
-            MessageBox.Show(
-                "Se ejecutó el escenario didáctico completo.\n\n" +
-                "Observa especialmente:\n" +
-                "- P3: Estado actual vs estado capturado\n" +
-                "- Canal P3->P2 resaltado por mensaje en tránsito\n" +
-                "- Resumen global del snapshot",
-                "Escenario automático",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information
-            );
+        private void btnVelocidad_Click(object? sender, EventArgs e)
+        {
+            if (_animationSpeed == 0.04f)
+            {
+                _animationSpeed = 0.015f;
+                _btnVelocidad.Text = "Vel. Lenta ◄";
+            }
+            else if (_animationSpeed == 0.015f)
+            {
+                _animationSpeed = 0.12f;
+                _btnVelocidad.Text = "Vel. Rápida ◄►";
+            }
+            else
+            {
+                _animationSpeed = 0.04f;
+                _btnVelocidad.Text = "Vel. Normal ►";
+            }
         }
 
         private void btnReiniciar_Click(object sender, EventArgs e)
@@ -90,6 +180,9 @@ namespace WinFormsApp2.UI
             animationTimer.Stop();
             _currentAnimation = null;
             _highlightedTransitChannels.Clear();
+            _pasoEscenario = 0;
+            btnEscenario.Text = "▶ Tutorial: Iniciar Snapshot";
+            _lblExplicacionPaso.Text = _explicacionesPasos[0];
 
             _simulator.Reiniciar();
             ActualizarUI();
@@ -133,7 +226,7 @@ namespace WinFormsApp2.UI
                 return;
             }
 
-            _currentAnimation.Progress += 0.04f;
+            _currentAnimation.Progress += _animationSpeed;
 
             if (_currentAnimation.Progress >= 1f)
             {
@@ -242,6 +335,77 @@ namespace WinFormsApp2.UI
             {
                 DibujarMensajeAnimado(g, _currentAnimation);
             }
+
+            DibujarLeyenda(g);
+            DibujarPanelPredictivo(g);
+        }
+
+        private void DibujarPanelPredictivo(Graphics g)
+        {
+            if (_currentAnimation != null)
+            {
+                return;
+            }
+
+            string prediccion = _simulator.ObtenerPrediccionSiguienteAccion();
+            
+            RectangleF rect = new RectangleF(10, panelCanvas.Height - 70, panelCanvas.Width - 20, 60);
+            using Brush bgBrush = new SolidBrush(Color.FromArgb(240, 248, 255));
+            using Pen border = new Pen(Color.SteelBlue, 2);
+            g.FillRectangle(bgBrush, rect);
+            g.DrawRectangle(border, Rectangle.Round(rect));
+
+            using Font font = new Font("Segoe UI", 11, FontStyle.Bold);
+            using Brush textBrush = new SolidBrush(Color.DarkSlateGray);
+            
+            g.DrawString(prediccion, font, textBrush, rect, new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center });
+        }
+
+        private void DibujarLeyenda(Graphics g)
+        {
+            float x = panelCanvas.Width - 195;
+            float y = 8;
+            float ancho = 185;
+            float alto = 110;
+
+            using Brush bgBrush = new SolidBrush(Color.FromArgb(220, 255, 255, 255));
+            using Pen borderPen = new Pen(Color.DimGray, 1);
+            g.FillRectangle(bgBrush, x, y, ancho, alto);
+            g.DrawRectangle(borderPen, x, y, ancho, alto);
+
+            using Font titleFont = new Font("Segoe UI", 9, FontStyle.Bold);
+            using Font itemFont = new Font("Segoe UI", 8, FontStyle.Regular);
+            Brush textBrush = Brushes.Black;
+
+            g.DrawString("LEYENDA", titleFont, textBrush, x + 55, y + 4);
+
+            // Nodo gris = sin snapshot
+            using (Brush grayBrush = new SolidBrush(Color.FromArgb(180, 230, 230, 230)))
+                g.FillEllipse(grayBrush, x + 8, y + 24, 12, 12);
+            g.DrawString("Sin snapshot", itemFont, textBrush, x + 26, y + 23);
+
+            // Nodo verde = snapshot OK
+            using (Brush greenBrush = new SolidBrush(Color.FromArgb(180, 230, 255, 180)))
+                g.FillEllipse(greenBrush, x + 8, y + 42, 12, 12);
+            g.DrawString("Foto guardada (OK)", itemFont, textBrush, x + 26, y + 41);
+
+            // Nodo amarillo = divergente
+            using (Brush yellowBrush = new SolidBrush(Color.FromArgb(200, 255, 236, 179)))
+                g.FillEllipse(yellowBrush, x + 8, y + 60, 12, 12);
+            g.DrawString("Actual != Capturado", itemFont, textBrush, x + 26, y + 59);
+
+            // Marker vs Normal
+            g.FillEllipse(Brushes.RoyalBlue, x + 8, y + 78, 12, 12);
+            g.DrawString("Marker (senal)", itemFont, textBrush, x + 26, y + 77);
+
+            g.FillEllipse(Brushes.DarkOrange, x + 100, y + 78, 12, 12);
+            g.DrawString("Normal", itemFont, textBrush, x + 118, y + 77);
+
+            // Iconos
+            g.FillEllipse(Brushes.Red, x + 8, y + 96, 8, 8);
+            g.DrawString("= Vigilando", itemFont, textBrush, x + 18, y + 94);
+            g.FillRectangle(Brushes.DimGray, x + 95, y + 96, 8, 8);
+            g.DrawString("= Cerrado", itemFont, textBrush, x + 105, y + 94);
         }
 
         private void DibujarCanal(Graphics g, string origen, string destino)
@@ -274,6 +438,31 @@ namespace WinFormsApp2.UI
             if (enTransito)
             {
                 g.DrawString("En tránsito", font, brush, midX - 38, midY - 4);
+            }
+
+            // --- Didactics: Draw channel status icons at destination ---
+            var procesoDestino = _simulator.Procesos[destino];
+            if (procesoDestino.SnapshotGuardado)
+            {
+                bool markerRecibido = procesoDestino.MarkerRecibidoPorCanal.ContainsKey(canal) && procesoDestino.MarkerRecibidoPorCanal[canal];
+                
+                float iconX = endEdge.X - 15;
+                float iconY = endEdge.Y - 25;
+                
+                if (markerRecibido)
+                {
+                    // Candado cerrado: rectángulo con texto
+                    using Font lockFont = new Font("Segoe UI", 8, FontStyle.Bold);
+                    g.FillRectangle(Brushes.DimGray, iconX - 2, iconY + 2, 36, 16);
+                    g.DrawString("CERRADO", lockFont, Brushes.White, iconX, iconY + 2);
+                }
+                else
+                {
+                    // Círculo rojo pulsante + texto Grabando
+                    using Font recFont = new Font("Segoe UI", 8, FontStyle.Bold);
+                    g.FillEllipse(Brushes.Red, iconX - 50, iconY + 4, 10, 10);
+                    g.DrawString("GRABANDO", recFont, Brushes.Crimson, iconX - 38, iconY + 2);
+                }
             }
         }
 
@@ -312,21 +501,21 @@ namespace WinFormsApp2.UI
             g.FillEllipse(fillBrush, rect);
             g.DrawEllipse(borderPen, rect);
 
-            using Font titleFont = new Font("Segoe UI", 11, FontStyle.Bold);
-            using Font textFont = new Font("Segoe UI", 8, FontStyle.Regular);
-            using Font badgeFont = new Font("Segoe UI", 7, FontStyle.Bold);
+            using Font titleFont = new Font("Segoe UI", 13, FontStyle.Bold); // Size 11 -> 13
+            using Font textFont = new Font("Segoe UI", 9, FontStyle.Bold);   // Bold y Size 8 -> 9
+            using Font badgeFont = new Font("Segoe UI", 8, FontStyle.Bold);  // Size 7 -> 8
             using Brush textBrush = new SolidBrush(Color.Black);
             using Brush badgeBrush = new SolidBrush(border);
 
             string snapshotTexto = proceso.EstadoGuardado?.ToString() ?? "-";
 
-            g.DrawString(nombre, titleFont, textBrush, center.X - 14, center.Y - 32);
-            g.DrawString($"Actual: {proceso.EstadoLocalActual}", textFont, textBrush, center.X - 34, center.Y - 8);
-            g.DrawString($"Capturado: {snapshotTexto}", textFont, textBrush, center.X - 42, center.Y + 13);
+            g.DrawString(nombre, titleFont, textBrush, center.X - 16, center.Y - 35);
+            g.DrawString($"Actual: {proceso.EstadoLocalActual}", textFont, textBrush, center.X - 35, center.Y - 8);
+            g.DrawString($"Capt. : {snapshotTexto}", textFont, textBrush, center.X - 35, center.Y + 12);
 
             if (divergente)
             {
-                g.DrawString("ACTUAL ≠ CAPTURADO", badgeFont, badgeBrush, center.X - 50, center.Y + 32);
+                g.DrawString("ACTUAL != CAPT.", badgeFont, badgeBrush, center.X - 45, center.Y + 33);
             }
         }
 

@@ -1,4 +1,4 @@
-﻿namespace WinFormsApp2.UI
+namespace WinFormsApp2.UI
 {
     partial class MainForm
     {
@@ -311,7 +311,7 @@
             // MainForm
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1176, 680);
+            this.ClientSize = new System.Drawing.Size(1176, 740);
             this.Controls.Add(this.txtResumen);
             this.Controls.Add(this.lblResumen);
             this.Controls.Add(this.lstEventos);

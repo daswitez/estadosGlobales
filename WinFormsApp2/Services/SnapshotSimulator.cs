@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using WinFormsApp2.Models;
@@ -147,6 +147,48 @@ namespace WinFormsApp2.Services
             }
 
             return ColaMensajes.Peek();
+        }
+
+        public string ObtenerPrediccionSiguienteAccion()
+        {
+            Mensaje? siguiente = ObtenerSiguienteMensajePendiente();
+            if (siguiente == null)
+            {
+                return "¿Qué pasará?: No hay mensajes en tránsito que entregar.";
+            }
+
+            Proceso receptor = Procesos[siguiente.Destino];
+            string canal = siguiente.Canal;
+
+            if (siguiente.Tipo == TipoMensaje.Marker)
+            {
+                if (!receptor.SnapshotGuardado)
+                {
+                    return $"¿Qué pasará?: {receptor.Nombre} recibirá un MARKER desde {siguiente.Origen}.\n" +
+                           $"⮑ Regla 1: Como {receptor.Nombre} NO ha guardado su estado, ¡lo guardará ahora! Cerrará el canal {canal} y reenviará marcadores.";
+                }
+                else
+                {
+                    return $"¿Qué pasará?: {receptor.Nombre} recibirá un MARKER desde {siguiente.Origen}.\n" +
+                           $"⮑ Regla 2: {receptor.Nombre} ya había guardado su estado. Solo cerrará permanentemente el canal {canal} para la captura.";
+                }
+            }
+            else
+            {
+                if (receptor.SnapshotGuardado &&
+                    receptor.MarkerRecibidoPorCanal.ContainsKey(canal) &&
+                    !receptor.MarkerRecibidoPorCanal[canal])
+                {
+                    return $"¿Qué pasará?: {receptor.Nombre} recibirá un mensaje normal desde {siguiente.Origen}.\n" +
+                           $"⮑ Regla 3: Como {receptor.Nombre} ya capturó, pero el canal {canal} aún no está cerrado con un Marker, " +
+                           $"¡este mensaje queda atrapado EN TRÁNSITO!";
+                }
+                else
+                {
+                    return $"¿Qué pasará?: {receptor.Nombre} recibirá un mensaje normal desde {siguiente.Origen}.\n" +
+                           $"⮑ Evento normal: Lo procesará y aumentará su reloj/estado local.";
+                }
+            }
         }
 
         public void EntregarSiguienteMensaje()
